@@ -76,7 +76,12 @@ def render_page(
         title = extract_title(source) or fallback_title or "Walkthrough"
 
     content = render_markdown(source)
+    css = build_css()
+    return render_template(title=title, css=css, content=content)
 
+
+def build_css() -> str:
+    """Build the full CSS string (GitHub styles + Pygments light/dark)."""
     light_fmt = HtmlFormatter(style="default")
     dark_fmt = HtmlFormatter(style="github-dark")
     light_css = light_fmt.get_style_defs("code.highlight")
@@ -88,6 +93,4 @@ def render_page(
         + dark_css
         + "\n}\n"
     )
-    css = GITHUB_CSS + "\n" + pygments_css
-
-    return render_template(title=title, css=css, content=content)
+    return GITHUB_CSS + "\n" + pygments_css

@@ -85,7 +85,7 @@ Single self-contained HTML file with all CSS inlined. Structure:
 ## Module Structure
 
 ```
-claude-linear-walkthrough/
+linear-walkthrough/
   main.py        -- CLI entry point (argparse, stdin/file, output)
   renderer.py    -- Core: markdown -> HTML conversion
   template.py    -- HTML template string + CSS
