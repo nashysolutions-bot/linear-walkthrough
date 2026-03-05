@@ -8,7 +8,7 @@ from pygments import highlight
 from pygments.formatters import HtmlFormatter
 from pygments.lexers import get_lexer_by_name, guess_lexer, TextLexer
 
-from linear_walkthrough.template import GITHUB_CSS, render_template
+from linear_walkthrough.template import render_template
 
 
 def _highlight_code(code: str, lang: str) -> str:
@@ -81,16 +81,15 @@ def render_page(
 
 
 def build_css() -> str:
-    """Build the full CSS string (GitHub styles + Pygments light/dark)."""
+    """Build the Pygments syntax highlighting CSS (light/dark)."""
     light_fmt = HtmlFormatter(style="default")
     dark_fmt = HtmlFormatter(style="github-dark")
     light_css = light_fmt.get_style_defs("code.highlight")
     dark_css = dark_fmt.get_style_defs("code.highlight")
 
-    pygments_css = (
+    return (
         light_css
         + "\n@media (prefers-color-scheme: dark) {\n"
         + dark_css
         + "\n}\n"
     )
-    return GITHUB_CSS + "\n" + pygments_css

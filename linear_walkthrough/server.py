@@ -1,11 +1,21 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import threading
 import webbrowser
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from pathlib import Path
+
+
+def _clean_env() -> dict[str, str]:
+    """Clone the environment with CLAUDE_CODE vars removed so claude subprocess works from within Claude Code."""
+    env = os.environ.copy()
+    for key in list(env):
+        if key.startswith("CLAUDE_CODE"):
+            env.pop(key)
+    return env
 
 from linear_walkthrough.renderer import render_markdown
 
@@ -68,6 +78,7 @@ class WalkthroughHandler(BaseHTTPRequestHandler):
         result = subprocess.run(
             cmd,
             cwd=self.server.cwd,
+            env=_clean_env(),
             capture_output=True,
             text=True,
             timeout=120,
@@ -117,8 +128,9 @@ def start_server(
     def seed_context():
         try:
             subprocess.run(
-                ["claude", "-p", f"You are helping explain a code walkthrough. Here is the full walkthrough for context. Do not respond with anything other than 'OK'.\n\n{source}", "--output-format", "text"],
+                ["claude", "-p", f"You are helping explain a code walkthrough. Respond in GitHub-flavored markdown syntax. Prefer using Mermaid.js diagrams (```mermaid fenced blocks) when visualizations would help. Here is the full walkthrough for context. Do not respond with anything other than 'OK'.\n\n{source}", "--output-format", "text"],
                 cwd=cwd,
+                env=_clean_env(),
                 capture_output=True,
                 text=True,
                 timeout=60,
