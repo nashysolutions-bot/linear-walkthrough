@@ -1,0 +1,21 @@
+[project]
+name = "claude-linear-walkthrough"
+version = "0.1.0"
+description = "Generate GitHub-styled HTML walkthroughs from markdown"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "markdown-it-py[plugins]",
+    "minijinja>=2.17.1",
+    "pygments",
+]
+
+[project.scripts]
+walkthrough = "main:main"
+
+[dependency-groups]
+dev = [
+    "mypy>=1.19.1",
+    "pytest>=9.0.2",
+    "ruff>=0.15.4",
+]
