@@ -223,7 +223,7 @@ body {
       color: #1f2328;
     }
     #followup-ready.visible { display: block; }
-    #followup-ready a {
+    #followup-ready .followup-btn {
       display: inline-block;
       margin-top: 8px;
       padding: 8px 16px;
@@ -232,8 +232,12 @@ body {
       border-radius: 6px;
       text-decoration: none;
       font-weight: 500;
+      cursor: pointer;
+      border: none;
+      font-size: 14px;
+      font-family: inherit;
     }
-    #followup-ready a:hover { background: #0860ca; }
+    #followup-ready .followup-btn:hover { background: #0860ca; }
     #followup-ready .dismiss {
       display: inline-block;
       margin-top: 8px;
@@ -251,8 +255,8 @@ body {
 
     @media (prefers-color-scheme: dark) {
       #followup-ready { background: #1a3a52; border-color: #1f6feb; color: #e6edf3; }
-      #followup-ready a { background: #238636; }
-      #followup-ready a:hover { background: #2ea043; }
+      #followup-ready .followup-btn { background: #238636; }
+      #followup-ready .followup-btn:hover { background: #2ea043; }
       #followup-ready .dismiss { background: #21262d; color: #9198a1; border-color: #30363d; }
       #followup-ready .dismiss:hover { background: #30363d; }
     }
@@ -389,9 +393,9 @@ body {
   </div>
 
   <div id="followup-ready">
-    <strong>Follow-up ready</strong>
+    <span id="followup-summary"><strong>Follow-up ready</strong></span>
     <br>
-    <a id="followup-link" href="#" target="_blank">Open follow-up</a>
+    <button class="followup-btn" id="followup-link">View response</button>
     <span class="dismiss" id="followup-dismiss">Dismiss</span>
   </div>
 
@@ -423,13 +427,21 @@ body {
     const followupReady = document.getElementById('followup-ready');
     const followupLink = document.getElementById('followup-link');
     const followupDismiss = document.getElementById('followup-dismiss');
+    const followupSummary = document.getElementById('followup-summary');
     const contentEl = document.getElementById('content');
 
     let selectedText = '';
     let busy = false;
+    let pendingUrl = '';
 
     followupDismiss.addEventListener('click', () => {
       followupReady.classList.remove('visible');
+    });
+
+    followupLink.addEventListener('click', () => {
+      // Remove the banner before navigating so bfcache restores the page without it
+      followupReady.classList.remove('visible');
+      window.location.href = pendingUrl;
     });
 
     function hidePopup() {
@@ -504,8 +516,10 @@ body {
 
         const data = await resp.json();
 
-        // Show the ready banner instead of silently opening a tab
-        followupLink.href = data.url;
+        // Show the ready banner with summary
+        pendingUrl = data.url;
+        const summary = data.summary || 'Follow-up ready';
+        followupSummary.innerHTML = 'Your follow-up on <strong>' + summary.replace(/</g, '&lt;') + '</strong> is ready.';
         followupReady.classList.add('visible');
         followupReady.scrollIntoView({ behavior: 'smooth', block: 'center' });
       } catch (err) {

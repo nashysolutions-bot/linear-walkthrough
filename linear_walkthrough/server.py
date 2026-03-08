@@ -9,7 +9,7 @@ import webbrowser
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from pathlib import Path
 
-from linear_walkthrough.renderer import render_markdown, render_page
+from linear_walkthrough.renderer import render_markdown
 
 
 def _slugify(text: str, max_len: int = 50) -> str:
@@ -34,16 +34,16 @@ class WalkthroughHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path == "/":
             self._respond(200, "text/html", self._build_page())
-        elif self.path.startswith("/followups/") and self.path.endswith(".html"):
-            filename = Path(self.path).name
-            if "/" in filename or "\\" in filename or ".." in filename:
-                self._respond(403, "text/plain", "Forbidden")
-                return
-            filepath = self.server.followups_dir / filename
-            if filepath.is_file():
-                self._respond(200, "text/html", filepath.read_text())
-            else:
+        elif (match := re.match(r"^/followup/(\d+)$", self.path)):
+            n = int(match.group(1))
+            followup = self.server.followups.get(n)
+            if followup is None:
                 self._respond(404, "text/plain", "Not found")
+                return
+            self._respond(200, "text/html", self._build_page(
+                title=followup["title"],
+                content_html=followup["html"],
+            ))
         else:
             self._respond(404, "text/plain", "Not found")
 
@@ -67,7 +67,6 @@ class WalkthroughHandler(BaseHTTPRequestHandler):
             self._respond(500, "text/plain", str(e))
             return
 
-        # Write follow-up to a separate file and serve as a static page
         self.server.followup_counter += 1
         n = self.server.followup_counter
 
@@ -82,24 +81,39 @@ class WalkthroughHandler(BaseHTTPRequestHandler):
             context_quote += "..."
         entry = f"# {topic}\n\n> {context_quote}\n\n{md_response}\n"
 
+        # Save markdown to disk for persistence
         md_path = self.server.followups_dir / f"{filename}.md"
-        html_path = self.server.followups_dir / f"{filename}.html"
         md_path.write_text(entry)
-        html_path.write_text(render_page(entry, title=topic))
 
-        url = f"/followups/{filename}.html"
-        response = json.dumps({"url": url})
+        # Store rendered content in memory for interactive serving
+        self.server.followups[n] = {
+            "title": topic,
+            "markdown": entry,
+            "html": render_markdown(entry),
+        }
+
+        # Build a short summary for the banner
+        summary_source = selected_text.strip().split("\n")[0][:60] if selected_text.strip() else prompt[:60]
+
+        url = f"/followup/{n}"
+        response = json.dumps({"url": url, "summary": summary_source})
         self._respond(200, "application/json", response)
 
-    def _build_page(self) -> str:
+    def _build_page(
+        self,
+        title: str | None = None,
+        content_html: str | None = None,
+    ) -> str:
         from linear_walkthrough.template import render_interactive_template
 
-        source = self.server.input_path.read_text()
-        content = render_markdown(source)
+        if content_html is None:
+            source = self.server.input_path.read_text()
+            content_html = render_markdown(source)
+
         return render_interactive_template(
-            title=self.server.title,
+            title=title or self.server.title,
             css=self.server.css,
-            content=content,
+            content=content_html,
         )
 
     def _call_claude(self, prompt: str) -> str:
@@ -144,6 +158,7 @@ class WalkthroughServer(HTTPServer):
     pr_context: str
     followup_counter: int
     followups_dir: Path
+    followups: dict[int, dict[str, str]]
 
 
 def _detect_pr_ref(source: str) -> str | None:
@@ -229,6 +244,7 @@ def start_server(
     server.conversation_started = False
     server.pr_context = ""
     server.followup_counter = 0
+    server.followups = {}
     output_dir = input_path.parent / ".linear-walkthrough"
     server.followups_dir = output_dir / "followups"
     server.followups_dir.mkdir(parents=True, exist_ok=True)
