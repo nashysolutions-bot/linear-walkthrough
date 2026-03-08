@@ -12,6 +12,15 @@ from pathlib import Path
 from linear_walkthrough.renderer import render_markdown, render_page
 
 
+def _slugify(text: str, max_len: int = 50) -> str:
+    """Derive a short, filesystem-safe slug from text."""
+    slug = re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-")
+    # Truncate at a word boundary
+    if len(slug) > max_len:
+        slug = slug[:max_len].rsplit("-", 1)[0]
+    return slug or "followup"
+
+
 def _clean_env() -> dict[str, str]:
     """Clone the environment with CLAUDE_CODE vars removed so claude subprocess works from within Claude Code."""
     env = os.environ.copy()
@@ -61,15 +70,24 @@ class WalkthroughHandler(BaseHTTPRequestHandler):
         # Write follow-up to a separate file and serve as a static page
         self.server.followup_counter += 1
         n = self.server.followup_counter
-        summary = prompt[:80] if len(prompt) > 80 else prompt
-        entry = f"# Follow-up: {summary}\n\n> {selected_text[:200]}{'...' if len(selected_text) > 200 else ''}\n\n{md_response}\n"
 
-        md_path = self.server.followups_dir / f"followup-{n}.md"
-        html_path = self.server.followups_dir / f"followup-{n}.html"
+        # Derive a descriptive topic from the selected text (preferred) or prompt
+        topic_source = selected_text.strip().split("\n")[0][:120] if selected_text.strip() else prompt
+        topic = topic_source[:80] if len(topic_source) > 80 else topic_source
+        slug = _slugify(topic_source)
+        filename = f"{n}-{slug}"
+
+        context_quote = selected_text[:200]
+        if len(selected_text) > 200:
+            context_quote += "..."
+        entry = f"# {topic}\n\n> {context_quote}\n\n{md_response}\n"
+
+        md_path = self.server.followups_dir / f"{filename}.md"
+        html_path = self.server.followups_dir / f"{filename}.html"
         md_path.write_text(entry)
-        html_path.write_text(render_page(entry, title=f"Follow-up: {summary}"))
+        html_path.write_text(render_page(entry, title=topic))
 
-        url = f"/followups/followup-{n}.html"
+        url = f"/followups/{filename}.html"
         response = json.dumps({"url": url})
         self._respond(200, "application/json", response)
 
@@ -211,8 +229,9 @@ def start_server(
     server.conversation_started = False
     server.pr_context = ""
     server.followup_counter = 0
-    server.followups_dir = input_path.parent / "followups"
-    server.followups_dir.mkdir(exist_ok=True)
+    output_dir = input_path.parent / ".linear-walkthrough"
+    server.followups_dir = output_dir / "followups"
+    server.followups_dir.mkdir(parents=True, exist_ok=True)
 
     # Resolve PR context
     pr_ref = pr or _detect_pr_ref(source)

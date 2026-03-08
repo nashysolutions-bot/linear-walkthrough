@@ -47,8 +47,9 @@ docs/plans/      - Design documents
 - `--cwd` sets working directory for `claude` subprocess (defaults to input file's directory)
 - Follow-ups use `claude -c -p` to continue conversation context
 - Server seeds Claude with the full walkthrough on first start
-- Responses appended to the original input markdown file (not a separate file)
-- Follow-up markdown entries include `---` separator, so JS should NOT add its own `<hr>`
+- Follow-up responses are written to `.linear-walkthrough/followups/` alongside the input file
+- Follow-up files use descriptive slugs (e.g. `1-broadcaster-handle.md`) instead of generic numbering
+- Follow-up headings reflect the topic, not the internal prompt
 - All client-side JS is vanilla (no frameworks, no build step)
 
 ## Dev Tools
