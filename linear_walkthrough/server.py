@@ -9,7 +9,7 @@ import webbrowser
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from pathlib import Path
 
-from linear_walkthrough.renderer import render_markdown
+from linear_walkthrough.renderer import render_markdown, render_page
 
 
 def _clean_env() -> dict[str, str]:
@@ -25,6 +25,16 @@ class WalkthroughHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path == "/":
             self._respond(200, "text/html", self._build_page())
+        elif self.path.startswith("/followups/") and self.path.endswith(".html"):
+            filename = Path(self.path).name
+            if "/" in filename or "\\" in filename or ".." in filename:
+                self._respond(403, "text/plain", "Forbidden")
+                return
+            filepath = self.server.followups_dir / filename
+            if filepath.is_file():
+                self._respond(200, "text/html", filepath.read_text())
+            else:
+                self._respond(404, "text/plain", "Not found")
         else:
             self._respond(404, "text/plain", "Not found")
 
@@ -48,15 +58,19 @@ class WalkthroughHandler(BaseHTTPRequestHandler):
             self._respond(500, "text/plain", str(e))
             return
 
-        # Append to the original markdown file
+        # Write follow-up to a separate file and serve as a static page
+        self.server.followup_counter += 1
+        n = self.server.followup_counter
         summary = prompt[:80] if len(prompt) > 80 else prompt
-        entry = f"\n---\n\n## Follow-up: {summary}\n\n> {selected_text[:200]}{'...' if len(selected_text) > 200 else ''}\n\n{md_response}\n"
-        with open(self.server.input_path, "a") as f:
-            f.write(entry)
+        entry = f"# Follow-up: {summary}\n\n> {selected_text[:200]}{'...' if len(selected_text) > 200 else ''}\n\n{md_response}\n"
 
-        # Return rendered HTML fragment of just the response
-        html_fragment = render_markdown(entry)
-        response = json.dumps({"html": html_fragment})
+        md_path = self.server.followups_dir / f"followup-{n}.md"
+        html_path = self.server.followups_dir / f"followup-{n}.html"
+        md_path.write_text(entry)
+        html_path.write_text(render_page(entry, title=f"Follow-up: {summary}"))
+
+        url = f"/followups/followup-{n}.html"
+        response = json.dumps({"url": url})
         self._respond(200, "application/json", response)
 
     def _build_page(self) -> str:
@@ -110,6 +124,8 @@ class WalkthroughServer(HTTPServer):
     cwd: Path
     conversation_started: bool
     pr_context: str
+    followup_counter: int
+    followups_dir: Path
 
 
 def _detect_pr_ref(source: str) -> str | None:
@@ -194,6 +210,9 @@ def start_server(
     server.cwd = cwd
     server.conversation_started = False
     server.pr_context = ""
+    server.followup_counter = 0
+    server.followups_dir = input_path.parent / "followups"
+    server.followups_dir.mkdir(exist_ok=True)
 
     # Resolve PR context
     pr_ref = pr or _detect_pr_ref(source)

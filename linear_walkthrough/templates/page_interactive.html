@@ -427,6 +427,8 @@ body {
       loadingIndicator.classList.add('visible');
       loadingIndicator.scrollIntoView({ behavior: 'smooth', block: 'end' });
 
+      const newTab = window.open('about:blank', '_blank');
+
       try {
         const resp = await fetch('/ask', {
           method: 'POST',
@@ -436,21 +438,16 @@ body {
 
         if (!resp.ok) {
           const err = await resp.text();
+          if (newTab) newTab.close();
           throw new Error(err);
         }
 
         const data = await resp.json();
-
-        const section = document.createElement('div');
-        section.innerHTML = data.html;
-        contentEl.appendChild(section);
-
-        // Re-run mermaid on new content
-        try {
-          await mermaid.run({ nodes: section.querySelectorAll('.mermaid') });
-        } catch (_) {}
-
-        section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        if (newTab) {
+          newTab.location.href = data.url;
+        } else {
+          window.open(data.url, '_blank');
+        }
       } catch (err) {
         const errDiv = document.createElement('div');
         errDiv.style.cssText = 'padding:16px;color:#cf222e;font-family:sans-serif;';
