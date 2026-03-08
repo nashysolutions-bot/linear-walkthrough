@@ -569,7 +569,12 @@ body {
   transition: background 0.1s ease;
 }
 #selection-popup button:hover { background: var(--color-border); }
-#selection-popup button:disabled { opacity: 0.5; cursor: not-allowed; }
+#selection-popup button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  pointer-events: none;
+  filter: grayscale(0.5);
+}
 #selection-popup button.primary {
   background: var(--color-accent);
   color: #fff;
@@ -598,30 +603,69 @@ body {
   box-shadow: 0 0 0 3px var(--color-accent-soft);
 }
 
-#loading-indicator {
+#loading-overlay {
   display: none;
-  text-align: center;
-  padding: 2rem;
-  color: var(--color-text-muted);
-  font-family: var(--font-body);
-  font-size: 14px;
-  max-width: var(--content-width);
-  width: 100%;
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  background: rgba(0, 0, 0, 0.35);
+  backdrop-filter: blur(3px);
+  align-items: center;
+  justify-content: center;
 }
-#loading-indicator.visible { display: block; }
+#loading-overlay.visible { display: flex; }
+
+@media (prefers-color-scheme: dark) {
+  #loading-overlay { background: rgba(0, 0, 0, 0.55); }
+}
+
+.loading-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  padding: 2rem 2.5rem;
+  background: var(--color-bg-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 16px;
+  box-shadow: 0 8px 32px var(--color-shadow-lg);
+  font-family: var(--font-body);
+  color: var(--color-text);
+}
 
 .loading-spinner {
-  display: inline-block;
-  width: 16px;
-  height: 16px;
-  border: 2px solid var(--color-border);
+  display: block;
+  width: 36px;
+  height: 36px;
+  border: 3px solid var(--color-border);
   border-top-color: var(--color-accent);
   border-radius: 50%;
-  animation: spin 0.6s linear infinite;
-  vertical-align: middle;
-  margin-right: 8px;
+  animation: spin 0.7s linear infinite;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
+
+.loading-text {
+  font-size: 15px;
+  font-weight: 500;
+  color: var(--color-text-secondary);
+}
+
+.loading-cancel {
+  padding: 6px 18px;
+  font-size: 13px;
+  font-family: var(--font-body);
+  font-weight: 500;
+  color: var(--color-text-secondary);
+  background: transparent;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+.loading-cancel:hover {
+  background: var(--color-bg-code);
+  border-color: var(--color-border-strong);
+}
 
 #followup-ready {
   display: none;
@@ -693,10 +737,6 @@ body {
 {{ content }}
       </article>
 
-      <div id="loading-indicator">
-        <span class="loading-spinner"></span> Asking Claude&hellip;
-      </div>
-
       <div id="followup-ready">
         <span id="followup-summary"><strong>Follow-up ready</strong></span>
         <br>
@@ -717,6 +757,14 @@ body {
     </div>
   </div>
 
+  <div id="loading-overlay">
+    <div class="loading-card">
+      <span class="loading-spinner"></span>
+      <span class="loading-text">Asking Claude&hellip;</span>
+      <button class="loading-cancel" id="loading-cancel">Cancel</button>
+    </div>
+  </div>
+
   <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js"></script>
   <script>
     mermaid.initialize({
@@ -732,7 +780,8 @@ body {
     const btnSend = document.getElementById('btn-send');
     const customRow = document.getElementById('custom-prompt-row');
     const customInput = document.getElementById('custom-prompt-input');
-    const loadingIndicator = document.getElementById('loading-indicator');
+    const loadingOverlay = document.getElementById('loading-overlay');
+    const loadingCancel = document.getElementById('loading-cancel');
     const followupReady = document.getElementById('followup-ready');
     const followupLink = document.getElementById('followup-link');
     const followupDismiss = document.getElementById('followup-dismiss');
@@ -742,6 +791,7 @@ body {
     let selectedText = '';
     let busy = false;
     let pendingUrl = '';
+    let abortController = null;
 
     /* --- Selection popup --- */
 
@@ -796,7 +846,10 @@ body {
     });
 
     document.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape') hidePopup();
+      if (e.key === 'Escape') {
+        hidePopup();
+        if (abortController) abortController.abort();
+      }
     });
 
     async function askClaude(prompt) {
@@ -807,15 +860,17 @@ body {
 
       btnExplain.disabled = true;
       btnAsk.disabled = true;
+      btnSend.disabled = true;
 
-      loadingIndicator.classList.add('visible');
-      loadingIndicator.scrollIntoView({ behavior: 'smooth', block: 'end' });
+      loadingOverlay.classList.add('visible');
+      abortController = new AbortController();
 
       try {
         const resp = await fetch('/ask', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ selected_text: selectedText, prompt: prompt })
+          body: JSON.stringify({ selected_text: selectedText, prompt: prompt }),
+          signal: abortController.signal
         });
 
         if (!resp.ok) {
@@ -831,18 +886,25 @@ body {
         followupReady.classList.add('visible');
         followupReady.scrollIntoView({ behavior: 'smooth', block: 'center' });
       } catch (err) {
+        if (err.name === 'AbortError') return;
         const errDiv = document.createElement('div');
         errDiv.style.cssText = 'padding:16px;color:var(--color-error);font-family:var(--font-body);border:1px solid var(--color-error);border-radius:8px;margin-top:1rem;';
         errDiv.textContent = 'Error: ' + err.message;
         contentEl.appendChild(errDiv);
         errDiv.scrollIntoView({ behavior: 'smooth' });
       } finally {
-        loadingIndicator.classList.remove('visible');
+        loadingOverlay.classList.remove('visible');
+        abortController = null;
         btnExplain.disabled = false;
         btnAsk.disabled = false;
+        btnSend.disabled = false;
         busy = false;
       }
     }
+
+    loadingCancel.addEventListener('click', () => {
+      if (abortController) abortController.abort();
+    });
 
     btnExplain.addEventListener('click', () => {
       askClaude('Explain the following in more detail. Be concise. Respond in GitHub-flavored markdown format.');
