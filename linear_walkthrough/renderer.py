@@ -28,9 +28,22 @@ def _highlight_code(code: str, lang: str) -> str:
     return f'<pre>{lang_label}<code class="highlight">{highlighted}</code></pre>'
 
 
+def _sanitise_mermaid(code: str) -> str:
+    """Escape characters that break Mermaid's client-side parser.
+
+    Angle brackets in node labels (e.g. ``Something<Baton<Intent>>``) are
+    interpreted as HTML tags by the browser before Mermaid sees them.
+    HTML-escaping them keeps the diagram source intact for the parser.
+    """
+    code = code.replace("&", "&amp;")
+    code = code.replace("<", "&lt;")
+    code = code.replace(">", "&gt;")
+    return code
+
+
 def _render_mermaid(code: str) -> str:
     """Wrap mermaid code in a div for client-side rendering."""
-    return f'<pre class="mermaid">{code}</pre>'
+    return f'<pre class="mermaid">{_sanitise_mermaid(code)}</pre>'
 
 
 def _make_renderer() -> MarkdownIt:
